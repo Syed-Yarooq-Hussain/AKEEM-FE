@@ -1,7 +1,7 @@
 import { FormEvent, useState } from 'react'
 import GoogleIcon from '../assets/google.svg'
 import LinkedInIcon from '../assets/linkedin.svg'
-import { login, saveAuth, signup } from '../services/auth'
+import { forgotPassword, login, saveAuth, signup } from '../services/auth'
 import LanguageSwitch from '../components/LanguageSwitch'
 
 type Mode = 'login' | 'signup' | 'forgot'
@@ -12,6 +12,8 @@ export default function AuthPage({ onSuccess }: Props) {
   const [mode, setMode] = useState<Mode>('login')
   const [loading,setLoading] = useState(false)
   const [error,setError] = useState('')
+  const [resetSent,setResetSent] = useState(false)
+  const submitForgot = async (event:FormEvent<HTMLFormElement>) => { event.preventDefault();setLoading(true);setError('');try{await forgotPassword(String(new FormData(event.currentTarget).get('email')));setResetSent(true)}catch(reason){setError(reason instanceof Error?reason.message:'Something went wrong. Please try again.')}finally{setLoading(false)} }
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault(); setLoading(true); setError('')
     const form = new FormData(event.currentTarget)
@@ -39,7 +41,7 @@ export default function AuthPage({ onSuccess }: Props) {
       <blockquote className="mt-auto rounded-2xl border border-[#c9a84c]/25 bg-white/[.04] p-5 text-sm italic leading-6 shadow-lg"><p>“AKEEM cut our cross-department reporting time by 80% and gave our executive team real-time intelligence they never had before.”</p><footer className="mt-4 flex items-center gap-3 not-italic"><span className="flex h-8 w-8 items-center justify-center rounded-full bg-[#c9a84c]/25 text-xs font-bold text-[#c9a84c]">SC</span><span><b className="block text-xs">Sarah Chen</b><small className="text-[#c9a84c]">CEO, Meridian Technologies</small></span></footer></blockquote>
     </section>
     <section className="flex min-h-screen items-center justify-center px-5 py-10 sm:px-10"><div className="w-full max-w-[360px]">
-      {mode === 'forgot' ? <><h2 className="text-2xl font-bold text-slate-950">Reset your password</h2><p className="mt-1 text-sm text-slate-500">We’ll send a reset link to your work email.</p><form onSubmit={event=>event.preventDefault()} className="mt-8 space-y-5"><Field name="email" label="Work Email" type="email" placeholder="you@company.com"/><button disabled title="Forgot-password API is not available yet" className="h-10 w-full cursor-not-allowed rounded-2xl bg-blue-300 text-sm font-bold text-white">Send reset link</button></form><p className="mt-2 text-center text-[11px] text-amber-600">Reset-password API is not connected yet.</p><button onClick={()=>setMode('login')} className="mt-6 w-full text-sm font-semibold text-blue-600">Back to sign in</button></> : <>
+      {mode === 'forgot' ? <><h2 className="text-2xl font-bold text-slate-950">Reset your password</h2><p className="mt-1 text-sm text-slate-500">We’ll send a reset link to your work email.</p>{resetSent?<p role="status" className="mt-8 rounded-xl bg-emerald-50 px-4 py-3 text-sm text-emerald-700">If this email exists, a reset link has been sent.</p>:<form onSubmit={submitForgot} className="mt-8 space-y-5"><Field name="email" label="Work Email" type="email" placeholder="you@company.com"/>{error&&<p role="alert" className="rounded-lg bg-red-50 px-3 py-2 text-xs text-red-600">{error}</p>}<button disabled={loading} className="h-10 w-full rounded-2xl bg-blue-600 text-sm font-bold text-white hover:bg-blue-700 disabled:bg-blue-300">{loading?'Please wait…':'Send reset link'}</button></form>}<button onClick={()=>{setMode('login');setResetSent(false);setError('')}} className="mt-6 w-full text-sm font-semibold text-blue-600">Back to sign in</button></> : <>
       <h2 className="text-[25px] font-bold leading-tight text-slate-950">{mode === 'login' ? 'Welcome back' : 'Create your account'}</h2><p className="mt-1 text-sm text-slate-500">{mode === 'login' ? 'Sign in to your organization account' : 'Start running your business with AI'}</p>
       <div className="mt-8 space-y-2.5"><Social icon={GoogleIcon}>Continue with Google</Social><Social icon={LinkedInIcon}>Continue with LinkedIn</Social></div>
       <div className="my-6 flex items-center gap-3 text-xs text-slate-400"><span className="h-px flex-1 bg-slate-200"/><span>or {mode === 'login' ? 'sign in' : 'sign up'} with email</span><span className="h-px flex-1 bg-slate-200"/></div>

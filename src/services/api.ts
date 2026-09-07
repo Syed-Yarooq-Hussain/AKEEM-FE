@@ -1,18 +1,9 @@
 export const API_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:3000/api'
-
-export function authHeaders(json = true): HeadersInit {
-  const token = localStorage.getItem('accessToken')
-  return {
-    ...(json ? { 'Content-Type': 'application/json' } : {}),
-    ...(token ? { Authorization: `Bearer ${token}` } : {}),
-  }
-}
-
-export async function getErrorMessage(response: Response) {
-  try {
-    const body = await response.json()
-    return body.message ?? body.error ?? `Request failed (${response.status})`
-  } catch {
-    return `Request failed (${response.status})`
-  }
-}
+type Envelope<T> = { success: boolean; data: T }
+type ErrorEnvelope = { success?: false; message?: string; code?: string; errors?: unknown[] }
+export class ApiError extends Error { constructor(message:string,public status:number,public code?:string,public errors:unknown[]=[]){super(message)} }
+export function saveTokens(accessToken:string,refreshToken:string){localStorage.setItem('accessToken',accessToken);localStorage.setItem('refreshToken',refreshToken)}
+export function clearTokens(){localStorage.removeItem('accessToken');localStorage.removeItem('refreshToken')}
+let refreshPromise:Promise<boolean>|null=null
+async function refreshAccessToken(){const refreshToken=localStorage.getItem('refreshToken');if(!refreshToken)return false;try{const response=await fetch(`${API_URL}/auth/refresh`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({refreshToken})});if(!response.ok)return false;const envelope=await response.json() as Envelope<{accessToken:string;refreshToken:string}>;if(!envelope.success||!envelope.data?.accessToken||!envelope.data?.refreshToken)return false;saveTokens(envelope.data.accessToken,envelope.data.refreshToken);return true}catch{return false}}
+export async function apiRequest<T>(path:string,options:RequestInit={},retry=true):Promise<T>{const token=localStorage.getItem('accessToken');const headers=new Headers(options.headers);if(options.body&&!(options.body instanceof FormData)&&!headers.has('Content-Type'))headers.set('Content-Type','application/json');if(token)headers.set('Authorization',`Bearer ${token}`);const response=await fetch(`${API_URL}${path}`,{...options,headers});if(response.status===401&&retry&&!path.startsWith('/auth/')){refreshPromise??=refreshAccessToken().finally(()=>{refreshPromise=null});if(await refreshPromise)return apiRequest<T>(path,options,false);clearTokens();window.dispatchEvent(new Event('auth:expired'))}const body=await response.json().catch(()=>({})) as Envelope<T>&ErrorEnvelope;if(!response.ok||body.success===false)throw new ApiError(body.message??`Request failed (${response.status})`,response.status,body.code,body.errors);return body.data}

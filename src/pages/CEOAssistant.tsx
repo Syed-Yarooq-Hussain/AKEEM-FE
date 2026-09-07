@@ -20,7 +20,7 @@ export default function CEOAssistant({ onNavigate }: Props) {
   useEffect(()=>{ void reloadProjects() },[])
   async function reloadProjects(selectId?:number) {
     setProjectsLoading(true)
-    try { const list=await getProjects(); setProjects(list); setSelectedProjectId(current=>selectId ?? (list.some(project=>project.id===current)?current:list[0]?.id)) }
+    try { const list=await getProjects(); setProjects(list); setSelectedProjectId(current=>{const saved=Number(localStorage.getItem('selectedProjectId'))||undefined;const next=selectId??(list.some(project=>project.id===(current??saved))?(current??saved):list[0]?.id);if(next)localStorage.setItem('selectedProjectId',String(next));return next}) }
     catch(reason) { setError(reason instanceof Error ? reason.message : 'Unable to load projects.') }
     finally { setProjectsLoading(false) }
   }
@@ -31,7 +31,7 @@ export default function CEOAssistant({ onNavigate }: Props) {
     finally { setHistoryLoading(false) }
   }
   const newSession = () => { setMessages([]); setConversationId(undefined); setSelected(-1); setError(''); setMeta('') }
-  const changeProject = (id:number|undefined) => { setSelectedProjectId(id); newSession() }
+  const changeProject = (id:number|undefined) => { setSelectedProjectId(id); if(id)localStorage.setItem('selectedProjectId',String(id));else localStorage.removeItem('selectedProjectId'); newSession() }
   const submitProject = async (event:FormEvent<HTMLFormElement>) => {
     event.preventDefault(); setCreating(true); setError(''); const data=new FormData(event.currentTarget)
     try { const project=await createProject({name:String(data.get('name')),description:String(data.get('description')),status:String(data.get('status')),startDate:String(data.get('startDate')),dueDate:String(data.get('dueDate')),budget:Number(data.get('budget'))}); await reloadProjects(project.id); setShowCreate(false); newSession() }
