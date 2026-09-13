@@ -1,9 +1,9 @@
-import { API_URL, apiRequest } from './api'
+import { downloadBlob, apiRequest } from './api'
 
 export type ApprovalInput={projectId?:number;title:string;type:string;amount?:number;currency?:string;description?:string;metadata?:Record<string,unknown>}
 export const createApproval=(payload:ApprovalInput)=>apiRequest('/approvals',{method:'POST',body:JSON.stringify(payload)})
 
-export type AutomationInput={projectId?:number;name:string;description?:string;trigger:{type:string;cron?:string};actions?:Array<Record<string,unknown>>;enabled?:boolean;nextRunAt?:string}
+export type AutomationInput={projectId?:number;name:string;description?:string;trigger:{cron?:string;timezone?:string;intervalMinutes?:number};actions?:Array<Record<string,unknown>>;enabled?:boolean;nextRunAt?:string}
 export const createAutomation=(payload:AutomationInput)=>apiRequest('/automations',{method:'POST',body:JSON.stringify(payload)})
 export const updateAutomation=(id:number,payload:Partial<AutomationInput>)=>apiRequest(`/automations/${id}`,{method:'PATCH',body:JSON.stringify(payload)})
 export const deleteAutomation=(id:number)=>apiRequest(`/automations/${id}`,{method:'DELETE'})
@@ -31,7 +31,8 @@ export const deleteFile=(id:number)=>apiRequest(`/files/${id}`,{method:'DELETE'}
 
 export type ReportInput={projectId?:number;title:string;assistant:string;format:string;content?:string;metadata?:Record<string,unknown>}
 export const generateReport=(payload:ReportInput)=>apiRequest('/reports/generate',{method:'POST',body:JSON.stringify(payload)})
-export async function downloadReport(id:number){const token=localStorage.getItem('accessToken');const response=await fetch(`${API_URL}/reports/${id}/download`,{headers:token?{Authorization:`Bearer ${token}`}:{}});if(!response.ok)throw new Error(`Download failed (${response.status})`);const blob=await response.blob();const disposition=response.headers.get('Content-Disposition')??'';const filename=disposition.match(/filename="?([^";]+)"?/)?.[1]??`report-${id}`;const url=URL.createObjectURL(blob);const anchor=document.createElement('a');anchor.href=url;anchor.download=filename;anchor.click();URL.revokeObjectURL(url)}
+export const downloadReport=(id:number)=>downloadBlob(`/reports/${id}/download`,`report-${id}`)
+export const downloadFile=(id:number)=>downloadBlob(`/files/${id}/download`,`file-${id}`)
 
 export type OrganizationInput={name?:string;logoUrl?:string;timezone?:string;currency?:string;language?:string;settings?:Record<string,unknown>}
 export const updateOrganization=(payload:OrganizationInput)=>apiRequest('/organization',{method:'PATCH',body:JSON.stringify(payload)})

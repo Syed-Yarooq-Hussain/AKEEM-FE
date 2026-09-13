@@ -1,3 +1,4 @@
+import { getSelectedProjectId, selectProject as persistProjectSelection } from '../services/project-selection';
 import { FormEvent, KeyboardEvent, useEffect, useRef, useState } from 'react'
 import AgentResultCards from '../components/AgentResultCards'
 import Icon from '../components/Icon'
@@ -9,6 +10,7 @@ import {
   AssistantId,
   AssistantMessage,
   ChatResponse,
+  ChatProgress,
   ExecutionMode,
   deleteConversation,
   getAssistantDirectory,
@@ -39,7 +41,7 @@ export type AssistantConfig = {
 }
 
 export const assistantConfigs: AssistantConfig[] = [
-  { id:'ceo', route:'ceo', label:'CEO Assistant', shortLabel:'CEO', role:'Strategy & Decision Support', description:'Company-wide strategy, priorities, risks, and executive decisions.', icon:'C', gradient:'from-amber-500 to-orange-600', soft:'bg-amber-50', text:'text-amber-700', module:'dashboard', capabilities:['Strategic analysis','Decision support','Agent orchestration'], prompts:['What needs my attention today?','Summarize the biggest project risks','Recommend my top three priorities'] },
+  { id:'ceo', route:'ceo', label:'CEO Assistant', shortLabel:'CEO', role:'Strategy & Decision Support', description:'Company-wide strategy, priorities, risks, and executive decisions.', icon:'C', gradient:'from-amber-500 to-orange-600', soft:'bg-amber-50', text:'text-amber-700', module:'dashboard', capabilities:['Strategic analysis','Decision support','Agent orchestration'], prompts:['What needs my attention today?','Ask Finance to review this project and report back','Recommend my top three priorities'] },
   { id:'executive', route:'executive', label:'Executive Assistant', shortLabel:'Executive', role:'Planning & Productivity', description:'Meetings, executive briefs, planning, and follow-through.', icon:'E', gradient:'from-violet-500 to-indigo-600', soft:'bg-violet-50', text:'text-violet-700', module:'reports', capabilities:['Executive briefs','Meeting prep','Priority planning'], prompts:['Prepare my executive brief','Create an action plan for this week','Summarize open decisions'] },
   { id:'sales', route:'sales', label:'Sales AI', shortLabel:'Sales', role:'Pipeline & Revenue Intelligence', description:'Pipeline reviews, deal strategy, forecasting, and sales coaching.', icon:'S', gradient:'from-blue-500 to-indigo-600', soft:'bg-blue-50', text:'text-blue-700', module:'crm', capabilities:['Pipeline analysis','Deal strategy','Revenue forecast'], prompts:['Review our sales pipeline','Which deals are at risk?','Create a plan to improve conversions'] },
   { id:'finance', route:'finance-ai', label:'Finance AI', shortLabel:'Finance', role:'Financial Planning & Analysis', description:'Cash flow, budgets, profitability, and financial scenarios.', icon:'F', gradient:'from-emerald-500 to-teal-600', soft:'bg-emerald-50', text:'text-emerald-700', module:'finance', capabilities:['Cash-flow analysis','Budget planning','Financial scenarios'], prompts:['Analyze our cash-flow position','Where are we over budget?','Create a 90-day financial outlook'] },
@@ -66,6 +68,7 @@ export default function AssistantWorkspace({ pageId, onNavigate }: Props) {
   const [executionMode, setExecutionMode] = useState<ExecutionMode>('suggest')
   const [input, setInput] = useState('')
   const [sending, setSending] = useState(false)
+  const [liveProgress, setLiveProgress] = useState<ChatProgress>()
   const [historyLoading, setHistoryLoading] = useState(false)
   const [listLoading, setListLoading] = useState(false)
   const [error, setError] = useState('')
@@ -74,10 +77,13 @@ export default function AssistantWorkspace({ pageId, onNavigate }: Props) {
   const [showCreate, setShowCreate] = useState(false)
   const [projectName, setProjectName] = useState('')
   const [creating, setCreating] = useState(false)
+  const historyVersion = useRef(0)
   const endRef = useRef<HTMLDivElement>(null)
   const config = configFor(assistant)
   const directoryItem = directory.find((item) => item.key === assistant)
+  const canOrchestrate = commandMode || assistant === 'ceo'
 
+  useEffect(()=>{const sync=()=>setProjectId(getSelectedProjectId());window.addEventListener('project:selected',sync);return()=>window.removeEventListener('project:selected',sync)},[]);
   useEffect(() => {
     void loadProjects()
     getAssistantDirectory().then((result) => setDirectory(result.items ?? [])).catch(() => undefined)
@@ -98,15 +104,17 @@ export default function AssistantWorkspace({ pageId, onNavigate }: Props) {
       const saved = Number(localStorage.getItem('selectedProjectId')) || undefined
       const next = preferredId ?? (list.some((project) => project.id === saved) ? saved : undefined)
       setProjectId(next)
-      if (next) localStorage.setItem('selectedProjectId', String(next))
+      persistProjectSelection(next)
     } catch (reason) { setError(messageFor(reason, 'Unable to load projects.')) }
     finally { setProjectsLoading(false) }
   }
 
   async function loadConversations(nextAssistant = assistant, nextProjectId = projectId, restore = false) {
+    const version=++historyVersion.current
     setListLoading(true)
     try {
       const received = await listConversations({ assistant:nextAssistant, ...(nextProjectId ? { projectId:nextProjectId } : {}) })
+      if(version!==historyVersion.current)return
       const items = nextProjectId ? received : received.filter((item) => item.projectId == null)
       setConversations(items)
       if (restore) {
@@ -119,9 +127,10 @@ export default function AssistantWorkspace({ pageId, onNavigate }: Props) {
   }
 
   async function openConversation(conversation: AssistantConversation, nextAssistant = assistant) {
+    const version=++historyVersion.current
     setConversationId(conversation.id); setHistoryLoading(true); setMessages([]); setError(''); setFailedMessage('')
     localStorage.setItem(historyKey(nextAssistant, conversation.projectId ?? projectId), String(conversation.id))
-    try { setMessages(await getConversationMessages(conversation.id)) }
+    try { const messages=await getConversationMessages(conversation.id);if(version===historyVersion.current)setMessages(messages) }
     catch (reason) {
       const apiError = reason instanceof ApiError ? reason : undefined
       if (apiError?.status === 404) setConversations((items) => items.filter((item) => item.id !== conversation.id))
@@ -130,12 +139,14 @@ export default function AssistantWorkspace({ pageId, onNavigate }: Props) {
   }
 
   function newConversation(clearStored = true) {
+    historyVersion.current++
     if (clearStored) localStorage.removeItem(historyKey(assistant, projectId))
     setConversationId(undefined); setMessages([]); setInput(''); setFailedMessage(''); setError('')
   }
 
   async function removeConversation(event: React.MouseEvent, id: number) {
     event.stopPropagation()
+    if (sending) return
     if (!window.confirm('Delete this conversation?')) return
     try {
       await deleteConversation(id)
@@ -158,9 +169,10 @@ export default function AssistantWorkspace({ pageId, onNavigate }: Props) {
   }
 
   async function sendText(text: string, appendUser: boolean, force = false) {
-    if (!text || sending || (providerUnavailable && !force)) return
+    if (!text || projectsLoading || historyLoading || sending || (providerUnavailable && !force)) return
     const optimistic: AssistantMessage = { id:`local-${Date.now()}`, role:'user', content:text, createdAt:new Date().toISOString() }
     if (appendUser) setMessages((items) => [...items, optimistic])
+    setLiveProgress(undefined)
     setInput(''); setSending(true); setError(''); setFailedMessage('')
     try {
       const payload = {
@@ -170,9 +182,11 @@ export default function AssistantWorkspace({ pageId, onNavigate }: Props) {
         executionMode,
         context:{ module:config.module, page:commandMode ? 'command-center' : `${config.id}-assistant` },
       }
-      const response = commandMode
-        ? await sendChatMessage({ ...payload, assistant })
-        : await sendDirectAssistantMessage(assistant, payload)
+      const response = await sendChatMessage({ ...payload, assistant }, progress => {
+        setLiveProgress(progress)
+        setConversationId(progress.conversationId)
+        localStorage.setItem(historyKey(assistant, projectId), String(progress.conversationId))
+      })
       receiveResponse(response)
     } catch (reason) {
       handleSendError(reason, text)
@@ -194,9 +208,9 @@ export default function AssistantWorkspace({ pageId, onNavigate }: Props) {
   function handleSendError(reason: unknown, text: string) {
     const apiError = reason instanceof ApiError ? reason : undefined
     if (apiError?.status === 503) setProviderUnavailable(true)
-    if (apiError?.status === 403) { setConversationId(undefined); localStorage.removeItem(historyKey(assistant, projectId)) }
+    if (apiError?.status === 403 || (apiError?.status === 404 && apiError.code === 'NOT_FOUND')) { setConversationId(undefined); localStorage.removeItem(historyKey(assistant, projectId)) }
     if (apiError?.status === 404 && apiError.code === 'PROJECT_NOT_FOUND') {
-      setProjectId(undefined); localStorage.removeItem('selectedProjectId'); void loadProjects()
+      setProjectId(undefined); persistProjectSelection(undefined); void loadProjects()
     }
     setFailedMessage(text)
     setMessages((items) => items.map((message, index) => index === items.length - 1 && message.role === 'user' ? { ...message, failed:true } : message))
@@ -216,7 +230,7 @@ export default function AssistantWorkspace({ pageId, onNavigate }: Props) {
   const changeProject = (value: string) => {
     const next = value ? Number(value) : undefined
     setProjectId(next)
-    if (next) localStorage.setItem('selectedProjectId', String(next)); else localStorage.removeItem('selectedProjectId')
+    if (next) persistProjectSelection(next); else persistProjectSelection(undefined)
   }
 
   const availableConfigs = directory.length
@@ -227,29 +241,30 @@ export default function AssistantWorkspace({ pageId, onNavigate }: Props) {
     <div className="flex flex-col justify-between gap-3 lg:flex-row lg:items-end">
       <div><p className="text-xs font-bold uppercase tracking-[.14em] text-blue-600">{commandMode ? 'AI workspace' : 'Specialist assistant'}</p><h1 className="mt-1 text-2xl font-bold text-slate-900">{commandMode ? 'AI Command Center' : config.label}</h1><p className="mt-1 text-sm text-slate-500">{commandMode ? 'Ask the CEO agent to coordinate work, or select a specialist for a focused response.' : directoryItem?.description || config.description}</p></div>
       <div className="flex flex-col gap-2 sm:flex-row">
-        <select disabled={projectsLoading} value={projectId ?? ''} onChange={(event) => changeProject(event.target.value)} aria-label="Chat project" className="h-10 min-w-56 rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700 shadow-sm focus:border-blue-400"><option value="">{projectsLoading ? 'Loading projects...' : 'Organization-wide (no project)'}</option>{projects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}</select>
+        <select disabled={projectsLoading || sending} value={projectId ?? ''} onChange={(event) => changeProject(event.target.value)} aria-label="Chat project" className="h-10 min-w-56 rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700 shadow-sm focus:border-blue-400"><option value="">{projectsLoading ? 'Loading projects...' : 'Organization-wide (no project)'}</option>{projects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}</select>
         <button onClick={() => setShowCreate((value) => !value)} className="h-10 rounded-lg border border-blue-200 bg-blue-50 px-4 text-xs font-bold text-blue-700 hover:bg-blue-100">{showCreate ? 'Cancel' : 'New project'}</button>
       </div>
     </div>
 
     {showCreate && <form onSubmit={submitProject} className="flex flex-col gap-2 rounded-xl border border-blue-100 bg-blue-50/60 p-3 sm:flex-row"><input autoFocus value={projectName} onChange={(event) => setProjectName(event.target.value)} placeholder="Project name" className="h-10 min-w-0 flex-1 rounded-lg border border-blue-200 bg-white px-3 text-sm outline-none focus:border-blue-400"/><button disabled={creating || !projectName.trim()} className="h-10 rounded-lg bg-blue-600 px-5 text-xs font-bold text-white hover:bg-blue-700 disabled:bg-blue-300">{creating ? 'Creating...' : 'Create & select'}</button></form>}
 
-    {commandMode && <section className="grid grid-cols-2 gap-2 sm:grid-cols-4 xl:grid-cols-8">{availableConfigs.map((item) => <button key={item.id} onClick={() => setAssistant(item.id)} className={`group rounded-xl border p-3 text-left transition ${assistant === item.id ? 'border-blue-300 bg-white shadow-sm ring-2 ring-blue-100' : 'border-slate-200 bg-white/70 hover:border-slate-300 hover:bg-white'}`}><span className={`flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br text-[11px] font-bold text-white ${item.gradient}`}>{item.icon}</span><b className="mt-2 block truncate text-[11px] text-slate-700">{item.shortLabel}</b></button>)}</section>}
+    {commandMode && <section className="grid grid-cols-2 gap-2 sm:grid-cols-4 xl:grid-cols-8">{availableConfigs.map((item) => <button key={item.id} disabled={sending} onClick={() => setAssistant(item.id)} className={`group rounded-xl border p-3 text-left transition ${assistant === item.id ? 'border-blue-300 bg-white shadow-sm ring-2 ring-blue-100' : 'border-slate-200 bg-white/70 hover:border-slate-300 hover:bg-white'}`}><span className={`flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br text-[11px] font-bold text-white ${item.gradient}`}>{item.icon}</span><b className="mt-2 block truncate text-[11px] text-slate-700">{item.shortLabel}</b></button>)}</section>}
 
     <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm lg:flex lg:h-[650px]">
       <aside className="flex max-h-48 flex-col border-b border-slate-200 bg-slate-50/60 lg:max-h-none lg:w-64 lg:shrink-0 lg:border-b-0 lg:border-r">
-        <div className="p-3"><button onClick={() => newConversation()} className="flex w-full items-center justify-center gap-2 rounded-lg bg-[#0A0E1A] py-2.5 text-xs font-bold text-white hover:bg-slate-800"><Icon name="plus" className="h-3.5 w-3.5"/>New conversation</button></div>
-        <div className="flex-1 overflow-y-auto px-2 pb-3"><p className="px-2 pb-2 text-[9px] font-bold uppercase tracking-[.14em] text-slate-400">Recent conversations</p>{listLoading && <p className="px-2 py-4 text-center text-[11px] text-slate-400">Loading...</p>}{!listLoading && !conversations.length && <p className="px-3 py-4 text-center text-[11px] leading-5 text-slate-400">No conversations yet.<br/>Start a new one.</p>}<div className="space-y-1">{conversations.map((conversation) => <button key={conversation.id} onClick={() => void openConversation(conversation)} className={`group flex w-full items-start gap-2 rounded-lg p-2.5 text-left ${conversationId === conversation.id ? 'bg-blue-50 text-blue-700' : 'text-slate-600 hover:bg-white'}`}><Icon name="bot" className="mt-0.5 h-3.5 w-3.5 shrink-0"/><span className="min-w-0 flex-1"><b className="block truncate text-[11px]">{conversation.title || `Conversation #${conversation.id}`}</b><small className="mt-0.5 block truncate text-[9px] text-slate-400">{conversation.lastMessage || relativeDate(conversation.updatedAt || conversation.createdAt)}</small></span><span role="button" aria-label="Delete conversation" onClick={(event) => void removeConversation(event, conversation.id)} className="hidden px-1 text-sm leading-none text-slate-400 hover:text-red-500 group-hover:block">x</span></button>)}</div></div>
+        <div className="p-3"><button disabled={sending} onClick={() => newConversation()} className="flex w-full items-center justify-center gap-2 rounded-lg bg-[#0A0E1A] py-2.5 text-xs font-bold text-white hover:bg-slate-800"><Icon name="plus" className="h-3.5 w-3.5"/>New conversation</button></div>
+        <div className="flex-1 overflow-y-auto px-2 pb-3"><p className="px-2 pb-2 text-[9px] font-bold uppercase tracking-[.14em] text-slate-400">Recent conversations</p>{listLoading && <p className="px-2 py-4 text-center text-[11px] text-slate-400">Loading...</p>}{!listLoading && !conversations.length && <p className="px-3 py-4 text-center text-[11px] leading-5 text-slate-400">No conversations yet.<br/>Start a new one.</p>}<div className="space-y-1">{conversations.map((conversation) => <button key={conversation.id} disabled={sending} onClick={() => void openConversation(conversation)} className={`group flex w-full items-start gap-2 rounded-lg p-2.5 text-left ${conversationId === conversation.id ? 'bg-blue-50 text-blue-700' : 'text-slate-600 hover:bg-white'}`}><Icon name="bot" className="mt-0.5 h-3.5 w-3.5 shrink-0"/><span className="min-w-0 flex-1"><b className="block truncate text-[11px]">{conversation.title || `Conversation #${conversation.id}`}</b><small className="mt-0.5 block truncate text-[9px] text-slate-400">{conversation.lastMessage || relativeDate(conversation.updatedAt || conversation.createdAt)}</small></span><span role="button" aria-label="Delete conversation" onClick={(event) => void removeConversation(event, conversation.id)} className="hidden px-1 text-sm leading-none text-slate-400 hover:text-red-500 group-hover:block">x</span></button>)}</div></div>
       </aside>
 
       <div className="flex min-h-[540px] min-w-0 flex-1 flex-col">
-        <header className="flex flex-wrap items-center gap-3 border-b border-slate-100 px-4 py-3 sm:px-5"><span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br text-[11px] font-bold text-white shadow-sm ${config.gradient}`}>{config.icon}</span><div className="min-w-0"><p className="truncate text-sm font-bold text-slate-800">{config.label}</p><p className="flex items-center gap-1.5 truncate text-[11px] text-slate-400"><span className="h-1.5 w-1.5 rounded-full bg-emerald-500"/>Online - {config.role}</p></div><ModeSwitch value={executionMode} onChange={setExecutionMode}/></header>
+        <header className="flex flex-wrap items-center gap-3 border-b border-slate-100 px-4 py-3 sm:px-5"><span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br text-[11px] font-bold text-white shadow-sm ${config.gradient}`}>{config.icon}</span><div className="min-w-0"><p className="truncate text-sm font-bold text-slate-800">{config.label}</p><p className="flex items-center gap-1.5 truncate text-[11px] text-slate-400"><span className="h-1.5 w-1.5 rounded-full bg-emerald-500"/>{providerUnavailable ? "Unavailable" : "Ready"} - {config.role}</p></div><ModeSwitch value={executionMode} onChange={setExecutionMode} disabled={sending}/></header>
         <div className="flex flex-wrap gap-x-4 gap-y-1 border-b border-slate-100 bg-slate-50/70 px-5 py-2 text-[10px] text-slate-500">{(directoryItem?.capabilities?.length ? directoryItem.capabilities : config.capabilities).map((capability) => <span key={capability} className="flex items-center gap-1"><b className="text-emerald-500">✓</b>{capability}</span>)}</div>
 
         <div className="flex-1 overflow-y-auto p-4 sm:p-6">
           {historyLoading && <div className="flex h-full items-center justify-center text-xs text-slate-400">Loading conversation...</div>}
-          {!historyLoading && !messages.length && <div className="mx-auto flex h-full max-w-lg flex-col items-center justify-center py-10 text-center"><span className={`flex h-14 w-14 items-center justify-center rounded-2xl text-xs font-bold ${config.soft} ${config.text}`}>{config.icon}</span><h2 className="mt-4 text-base font-bold text-slate-800">How can {config.label} help?</h2><p className="mt-1 max-w-sm text-xs leading-5 text-slate-400">{projectId ? `The assistant will use ${projects.find((project) => project.id === projectId)?.name || 'the selected project'} as context.` : 'Ask an organization-wide question, or select a project for focused context.'}</p><div className="mt-5 grid w-full gap-2 sm:grid-cols-3">{config.prompts.map((prompt) => <button key={prompt} onClick={() => setInput(prompt)} className="rounded-xl border border-slate-200 bg-white p-3 text-left text-[11px] leading-4 text-slate-600 hover:border-blue-300 hover:bg-blue-50/40">{prompt}</button>)}</div></div>}
+          {!historyLoading && !messages.length && <div className="mx-auto flex h-full max-w-xl flex-col items-center justify-center py-8 text-center"><span className={`flex h-14 w-14 items-center justify-center rounded-2xl text-xs font-bold ${config.soft} ${config.text}`}>{config.icon}</span><h2 className="mt-4 text-base font-bold text-slate-800">How can {config.label} help?</h2><p className="mt-1 max-w-sm text-xs leading-5 text-slate-400">{projectId ? `The assistant will use ${projects.find((project) => project.id === projectId)?.name || 'the selected project'} as context.` : 'Ask an organization-wide question, or select a project for focused context.'}</p>{canOrchestrate && <div className="mt-4 w-full rounded-xl border border-blue-100 bg-blue-50/60 p-3 text-left"><b className="text-[11px] text-blue-800">To involve another agent</b><p className="mt-1 text-[10px] leading-4 text-blue-700">Select a project, keep Suggest mode on, and write: “Ask Finance to review this project and report back. Do not create anything.” Finance will appear below the CEO reply as a delegation card.</p></div>}<div className="mt-4 grid w-full gap-2 sm:grid-cols-3">{config.prompts.map((prompt) => <button key={prompt} onClick={() => setInput(prompt)} className="rounded-xl border border-slate-200 bg-white p-3 text-left text-[11px] leading-4 text-slate-600 hover:border-blue-300 hover:bg-blue-50/40">{prompt}</button>)}</div></div>}
           {!historyLoading && messages.length > 0 && <div className="space-y-5">{messages.map((message, index) => <MessageBubble key={message.id ?? `${message.role}-${index}`} message={message} config={config} onNavigate={onNavigate}/>)}</div>}
+          {sending && liveProgress && <AgentResultCards delegations={liveProgress.delegations} onNavigate={onNavigate}/>}
           {sending && <div className="mt-5 flex items-center gap-3 text-xs text-slate-500"><span className={`flex h-8 w-8 items-center justify-center rounded-xl bg-gradient-to-br text-[10px] font-bold text-white ${config.gradient}`}>{config.icon}</span><span>Agent team is working...</span><span className="flex gap-1"><i className="h-1.5 w-1.5 animate-bounce rounded-full bg-slate-400"/><i className="h-1.5 w-1.5 animate-bounce rounded-full bg-slate-400 [animation-delay:120ms]"/><i className="h-1.5 w-1.5 animate-bounce rounded-full bg-slate-400 [animation-delay:240ms]"/></span></div>}
           <div ref={endRef}/>
         </div>
@@ -272,8 +287,8 @@ function MessageBubble({ message, config, onNavigate }: { message: AssistantMess
   return <div className={`flex gap-3 ${user ? 'flex-row-reverse' : ''}`}><span className={`flex h-8 w-8 shrink-0 items-center justify-center text-[9px] font-bold ${user ? 'rounded-full bg-slate-800 text-white' : `rounded-xl bg-gradient-to-br text-white ${config.gradient}`}`}>{user ? 'YOU' : config.icon}</span><div className={`max-w-[88%] ${user ? 'text-right' : ''}`}><div className={`rounded-2xl px-4 py-3 text-left text-xs leading-5 ${user ? `rounded-tr-sm bg-blue-600 text-white ${message.failed ? 'ring-2 ring-red-300' : ''}` : 'rounded-tl-sm border border-slate-100 bg-slate-50 text-slate-700'}`}><p className="whitespace-pre-wrap">{message.content}</p>{!user && <AgentResultCards delegations={message.delegations} actions={message.actions} onNavigate={onNavigate}/>}</div><small className="px-1 text-[9px] text-slate-400">{[time, message.model].filter(Boolean).join(' · ')}</small></div></div>
 }
 
-export function ModeSwitch({ value, onChange }: { value: ExecutionMode; onChange: (mode: ExecutionMode) => void }) {
-  return <div className="ml-auto flex rounded-lg bg-slate-100 p-1" aria-label="Execution mode">{(['suggest','auto'] as ExecutionMode[]).map((mode) => <button key={mode} type="button" onClick={() => onChange(mode)} className={`rounded-md px-2.5 py-1 text-[10px] font-bold capitalize ${value === mode ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`} title={mode === 'auto' ? 'Allow safe actions to execute' : 'Propose actions without executing'}>{mode}</button>)}</div>
+export function ModeSwitch({ value, onChange, disabled = false }: { value: ExecutionMode; onChange: (mode: ExecutionMode) => void; disabled?: boolean }) {
+  return <div className="ml-auto flex rounded-lg bg-slate-100 p-1" aria-label="Execution mode">{(['suggest','auto'] as ExecutionMode[]).map((mode) => <button key={mode} type="button" disabled={disabled} onClick={() => onChange(mode)} className={`rounded-md px-2.5 py-1 text-[10px] font-bold capitalize ${value === mode ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`} title={mode === 'auto' ? 'Allow safe actions to execute' : 'Propose actions without executing'}>{mode}</button>)}</div>
 }
 
 function announceActions(actions?: ActionResult[], delegations?: ChatResponse['delegations']) {

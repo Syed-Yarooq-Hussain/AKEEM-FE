@@ -1,3 +1,4 @@
+import { getSelectedProjectId, selectProject as persistProjectSelection } from '../services/project-selection';
 import { useEffect, useState } from 'react'
 import Icon from '../components/Icon'
 import { DashboardOverview, getDashboardOverview } from '../services/dashboard'
@@ -13,10 +14,11 @@ export default function DashboardPage({onNavigate,userName}:Props){
   const [loading,setLoading]=useState(true)
   const [error,setError]=useState('')
 
-  useEffect(()=>{getProjects().then(items=>{setProjects(items);const saved=Number(localStorage.getItem('selectedProjectId'))||undefined;const next=items.some(item=>item.id===saved)?saved:items[0]?.id;setProjectId(next);if(next)localStorage.setItem('selectedProjectId',String(next))}).catch(reason=>setError(reason instanceof Error?reason.message:'Unable to load projects.'))},[])
+  useEffect(()=>{const sync=()=>setProjectId(getSelectedProjectId());window.addEventListener('project:selected',sync);return()=>window.removeEventListener('project:selected',sync)},[]);
+  useEffect(()=>{getProjects().then(items=>{setProjects(items);const saved=Number(localStorage.getItem('selectedProjectId'))||undefined;const next=items.some(item=>item.id===saved)?saved:items[0]?.id;setProjectId(next);persistProjectSelection(next)}).catch(reason=>setError(reason instanceof Error?reason.message:'Unable to load projects.'))},[])
   useEffect(()=>{if(!projectId){setLoading(false);setData(undefined);return}setLoading(true);setError('');getDashboardOverview(projectId,period).then(setData).catch(reason=>setError(reason instanceof Error?reason.message:'Unable to load dashboard.')).finally(()=>setLoading(false))},[projectId,period])
 
-  const selectProject=(value:string)=>{const next=value?Number(value):undefined;setProjectId(next);if(next)localStorage.setItem('selectedProjectId',String(next))}
+  const selectProject=(value:string)=>{const next=value?Number(value):undefined;setProjectId(next);persistProjectSelection(next)}
   return <div className="mx-auto max-w-7xl">
     <div className="flex flex-col justify-between gap-3 lg:flex-row lg:items-end"><div><h1 className="text-2xl font-bold text-slate-900">Good morning{userName?`, ${userName}`:''}</h1><p className="mt-1 text-sm text-slate-500">Here is what is happening across your business today.</p></div><div className="flex flex-col gap-2 sm:flex-row"><select value={projectId??''} onChange={event=>selectProject(event.target.value)} className="h-10 min-w-52 rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold"><option value="">Select a project</option>{projects.map(project=><option key={project.id} value={project.id}>{project.name}</option>)}</select><button onClick={()=>onNavigate('command')} className="flex h-10 items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 text-xs font-bold text-white shadow-sm hover:bg-blue-700"><Icon name="bot" className="h-4 w-4"/>Ask AI Assistant</button></div></div>
     {error&&<p className="mt-5 rounded-xl bg-red-50 p-4 text-sm text-red-600">{error}</p>}

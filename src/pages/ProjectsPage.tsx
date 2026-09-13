@@ -1,31 +1,360 @@
-import { FormEvent, useEffect, useState } from 'react'
-import Icon from '../components/Icon'
-import { archiveProject, createProject, listProjects, Project, updateProject } from '../services/projects'
+import { selectProject as persistProjectSelection } from '../services/project-selection';
+import { FormEvent, useEffect, useState } from "react";
+import Icon from "../components/Icon";
+import {
+  archiveProject,
+  createProject,
+  listProjects,
+  Project,
+  updateProject,
+} from "../services/projects";
 
-export default function ProjectsPage(){
-  const [items,setItems]=useState<Project[]>([])
-  const [loading,setLoading]=useState(true)
-  const [error,setError]=useState('')
-  const [search,setSearch]=useState('')
-  const [status,setStatus]=useState('')
-  const [editing,setEditing]=useState<Project|Partial<Project>>()
-  const [saving,setSaving]=useState(false)
+export default function ProjectsPage() {
+  const [items, setItems] = useState<Project[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [search, setSearch] = useState("");
+  const [status, setStatus] = useState("");
+  const [editing, setEditing] = useState<Project | Partial<Project>>();
+  const [saving, setSaving] = useState(false);
 
-  const load=async()=>{setLoading(true);setError('');try{const result=await listProjects({search,status});setItems(result.items)}catch(reason){setError(reason instanceof Error?reason.message:'Unable to load projects.')}finally{setLoading(false)}}
-  useEffect(()=>{const timer=window.setTimeout(()=>void load(),250);return()=>window.clearTimeout(timer)},[search,status])
+  const load = async () => {
+    setLoading(true);
+    setError("");
+    try {
+      const result = await listProjects({ search, status });
+      setItems(result.items);
+    } catch (reason) {
+      setError(
+        reason instanceof Error ? reason.message : "Unable to load projects.",
+      );
+    } finally {
+      setLoading(false);
+    }
+  };
+  useEffect(() => {
+    const timer = window.setTimeout(() => void load(), 250);
+    return () => window.clearTimeout(timer);
+  }, [search, status]);
 
-  async function save(event:FormEvent<HTMLFormElement>){event.preventDefault();if(saving)return;setSaving(true);setError('');const form=new FormData(event.currentTarget);const payload={name:String(form.get('name')),description:String(form.get('description')||''),status:String(form.get('status')||'active'),startDate:String(form.get('startDate')||''),dueDate:String(form.get('dueDate')||''),budget:Number(form.get('budget'))||0}
-    try{if(editing?.id)await updateProject(editing.id,payload);else await createProject(payload);setEditing(undefined);await load()}catch(reason){setError(reason instanceof Error?reason.message:'Unable to save project.')}finally{setSaving(false)}}
-  async function archive(project:Project){if(!window.confirm(`Archive ${project.name}?`))return;try{await archiveProject(project.id);if(Number(localStorage.getItem('selectedProjectId'))===project.id)localStorage.removeItem('selectedProjectId');await load()}catch(reason){setError(reason instanceof Error?reason.message:'Unable to archive project.')}}
+  async function save(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (saving) return;
+    setSaving(true);
+    setError("");
+    const form = new FormData(event.currentTarget);
+    const startDate = String(form.get("startDate") || "").trim(),
+      dueDate = String(form.get("dueDate") || "").trim();
+    const payload = {
+      name: String(form.get("name")),
+      description: String(form.get("description") || ""),
+      status: String(form.get("status") || "active"),
+      budget: Number(form.get("budget")) || 0,
+      ...(startDate ? { startDate } : {}),
+      ...(dueDate ? { dueDate } : {}),
+    };
+    try {
+      if (editing?.id) await updateProject(editing.id, payload);
+      else {
+        const created = await createProject(payload);
+        persistProjectSelection(created.id);
+      }
+      setEditing(undefined);
+      await load();
+    } catch (reason) {
+      setError(
+        reason instanceof Error ? reason.message : "Unable to save project.",
+      );
+    } finally {
+      setSaving(false);
+    }
+  }
+  async function archive(project: Project) {
+    if (!window.confirm(`Archive ${project.name}?`)) return;
+    try {
+      await archiveProject(project.id);
+      if (Number(localStorage.getItem("selectedProjectId")) === project.id)
+        persistProjectSelection(undefined);
+      await load();
+    } catch (reason) {
+      setError(
+        reason instanceof Error ? reason.message : "Unable to archive project.",
+      );
+    }
+  }
 
-  return <div className="mx-auto max-w-7xl"><div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-end"><div><p className="text-xs font-bold uppercase tracking-[.14em] text-blue-600">Workspace</p><h1 className="mt-1 text-2xl font-bold">Projects</h1><p className="mt-1 text-sm text-slate-500">Create and manage the project context used across dashboards and AI agents.</p></div><button onClick={()=>setEditing({status:'active'})} className="flex h-10 items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 text-xs font-bold text-white hover:bg-blue-700"><Icon name="plus" className="h-4 w-4"/>New project</button></div>
-    <div className="mt-5 flex flex-col gap-2 rounded-xl border border-slate-200 bg-white p-3 sm:flex-row"><label className="relative min-w-0 flex-1"><Icon name="search" className="absolute left-3 top-2.5 h-4 w-4 text-slate-400"/><input value={search} onChange={event=>setSearch(event.target.value)} placeholder="Search projects" className="h-9 w-full rounded-lg border border-slate-200 pl-9 pr-3 text-xs outline-none focus:border-blue-400"/></label><select value={status} onChange={event=>setStatus(event.target.value)} className="h-9 rounded-lg border border-slate-200 px-3 text-xs"><option value="">All statuses</option><option value="active">Active</option><option value="completed">Completed</option><option value="archived">Archived</option></select><button onClick={()=>void load()} className="h-9 rounded-lg border border-slate-200 px-4 text-xs font-semibold hover:bg-slate-50">Refresh</button></div>
-    {error&&<p className="mt-4 rounded-xl bg-red-50 p-3 text-xs text-red-600">{error}</p>}
-    {loading?<div className="mt-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">{[1,2,3].map(item=><div key={item} className="h-44 animate-pulse rounded-xl bg-slate-200"/>)}</div>:items.length?<div className="mt-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">{items.map(project=><article key={project.id} className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm"><div className="flex items-start gap-3"><span className="rounded-lg bg-blue-50 p-2 text-blue-600"><Icon name="check" className="h-5 w-5"/></span><div className="min-w-0 flex-1"><h2 className="truncate text-sm font-bold">{project.name}</h2><span className={`mt-1 inline-block rounded-full px-2 py-0.5 text-[9px] font-bold capitalize ${project.status==='active'?'bg-emerald-50 text-emerald-700':'bg-slate-100 text-slate-600'}`}>{project.status||'active'}</span></div></div><p className="mt-3 line-clamp-2 min-h-10 text-xs leading-5 text-slate-500">{project.description||'No description provided.'}</p><div className="mt-4"><div className="flex justify-between text-[10px] text-slate-400"><span>Progress</span><b className="text-slate-600">{project.progress??0}%</b></div><div className="mt-1 h-1.5 overflow-hidden rounded-full bg-slate-100"><div className="h-full rounded-full bg-blue-500" style={{width:`${Math.min(100,Math.max(0,project.progress??0))}%`}}/></div></div><div className="mt-4 flex justify-between border-t border-slate-100 pt-3 text-[10px] text-slate-400"><span>{project.dueDate?`Due ${new Date(project.dueDate).toLocaleDateString()}`:'No due date'}</span><span>{project.budget!=null?`${project.currency||''} ${project.budget.toLocaleString()}`:'No budget'}</span></div><div className="mt-3 flex gap-2"><button onClick={()=>{localStorage.setItem('selectedProjectId',String(project.id));window.dispatchEvent(new Event('project:selected'))}} className="flex-1 rounded-lg bg-blue-50 px-3 py-2 text-[10px] font-bold text-blue-700 hover:bg-blue-100">Use as active</button><button onClick={()=>setEditing(project)} className="rounded-lg border border-slate-200 px-3 py-2 text-[10px] font-bold text-slate-600 hover:bg-slate-50">Edit</button><button onClick={()=>void archive(project)} className="rounded-lg border border-red-100 px-3 py-2 text-[10px] font-bold text-red-500 hover:bg-red-50">Archive</button></div></article>)}</div>:<div className="mt-5 rounded-xl border border-dashed border-slate-300 bg-white p-10 text-center text-sm text-slate-400">No projects found.</div>}
-    {editing&&<ProjectDialog project={editing} saving={saving} onClose={()=>setEditing(undefined)} onSave={save}/>} 
-  </div>
+  return (
+    <div className="mx-auto max-w-7xl">
+      <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-end">
+        <div>
+          <p className="text-xs font-bold uppercase tracking-[.14em] text-blue-600">
+            Workspace
+          </p>
+          <h1 className="mt-1 text-2xl font-bold">Projects</h1>
+          <p className="mt-1 text-sm text-slate-500">
+            Create and manage the project context used across dashboards and AI
+            agents.
+          </p>
+        </div>
+        <button
+          onClick={() => setEditing({ status: "active" })}
+          className="flex h-10 items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 text-xs font-bold text-white hover:bg-blue-700"
+        >
+          <Icon name="plus" className="h-4 w-4" />
+          New project
+        </button>
+      </div>
+      <div className="mt-5 flex flex-col gap-2 rounded-xl border border-slate-200 bg-white p-3 sm:flex-row">
+        <label className="relative min-w-0 flex-1">
+          <Icon
+            name="search"
+            className="absolute left-3 top-2.5 h-4 w-4 text-slate-400"
+          />
+          <input
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+            placeholder="Search projects"
+            className="h-9 w-full rounded-lg border border-slate-200 pl-9 pr-3 text-xs outline-none focus:border-blue-400"
+          />
+        </label>
+        <select
+          value={status}
+          onChange={(event) => setStatus(event.target.value)}
+          className="h-9 rounded-lg border border-slate-200 px-3 text-xs"
+        >
+          <option value="">All statuses</option>
+          <option value="active">Active</option>
+          <option value="completed">Completed</option>
+          <option value="archived">Archived</option>
+        </select>
+        <button
+          onClick={() => void load()}
+          className="h-9 rounded-lg border border-slate-200 px-4 text-xs font-semibold hover:bg-slate-50"
+        >
+          Refresh
+        </button>
+      </div>
+      {error && (
+        <p className="mt-4 rounded-xl bg-red-50 p-3 text-xs text-red-600">
+          {error}
+        </p>
+      )}
+      {loading ? (
+        <div className="mt-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+          {[1, 2, 3].map((item) => (
+            <div
+              key={item}
+              className="h-44 animate-pulse rounded-xl bg-slate-200"
+            />
+          ))}
+        </div>
+      ) : items.length ? (
+        <div className="mt-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+          {items.map((project) => (
+            <article
+              key={project.id}
+              className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm"
+            >
+              <div className="flex items-start gap-3">
+                <span className="rounded-lg bg-blue-50 p-2 text-blue-600">
+                  <Icon name="check" className="h-5 w-5" />
+                </span>
+                <div className="min-w-0 flex-1">
+                  <h2 className="truncate text-sm font-bold">{project.name}</h2>
+                  <span
+                    className={`mt-1 inline-block rounded-full px-2 py-0.5 text-[9px] font-bold capitalize ${project.status === "active" ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-600"}`}
+                  >
+                    {project.status || "active"}
+                  </span>
+                </div>
+              </div>
+              <p className="mt-3 line-clamp-2 min-h-10 text-xs leading-5 text-slate-500">
+                {project.description || "No description provided."}
+              </p>
+              <div className="mt-4">
+                <div className="flex justify-between text-[10px] text-slate-400">
+                  <span>Progress</span>
+                  <b className="text-slate-600">{project.progress ?? 0}%</b>
+                </div>
+                <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-slate-100">
+                  <div
+                    className="h-full rounded-full bg-blue-500"
+                    style={{
+                      width: `${Math.min(100, Math.max(0, project.progress ?? 0))}%`,
+                    }}
+                  />
+                </div>
+              </div>
+              <div className="mt-4 flex justify-between border-t border-slate-100 pt-3 text-[10px] text-slate-400">
+                <span>
+                  {project.dueDate
+                    ? `Due ${new Date(project.dueDate).toLocaleDateString()}`
+                    : "No due date"}
+                </span>
+                <span>
+                  {project.budget != null
+                    ? `${project.currency || ""} ${project.budget.toLocaleString()}`
+                    : "No budget"}
+                </span>
+              </div>
+              <div className="mt-3 flex gap-2">
+                <button
+                  onClick={() => {
+                    persistProjectSelection(project.id);
+                  }}
+                  className="flex-1 rounded-lg bg-blue-50 px-3 py-2 text-[10px] font-bold text-blue-700 hover:bg-blue-100"
+                >
+                  Use as active
+                </button>
+                <button
+                  onClick={() => setEditing(project)}
+                  className="rounded-lg border border-slate-200 px-3 py-2 text-[10px] font-bold text-slate-600 hover:bg-slate-50"
+                >
+                  Edit
+                </button>
+                <button
+                  onClick={() => void archive(project)}
+                  className="rounded-lg border border-red-100 px-3 py-2 text-[10px] font-bold text-red-500 hover:bg-red-50"
+                >
+                  Archive
+                </button>
+              </div>
+            </article>
+          ))}
+        </div>
+      ) : (
+        <div className="mt-5 rounded-xl border border-dashed border-slate-300 bg-white p-10 text-center text-sm text-slate-400">
+          No projects found.
+        </div>
+      )}
+      {editing && (
+        <ProjectDialog
+          project={editing}
+          saving={saving}
+          onClose={() => setEditing(undefined)}
+          onSave={save}
+        />
+      )}
+    </div>
+  );
 }
 
-function ProjectDialog({project,saving,onClose,onSave}:{project:Partial<Project>;saving:boolean;onClose:()=>void;onSave:(event:FormEvent<HTMLFormElement>)=>void}){return <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-950/40 sm:items-center sm:p-4"><form onSubmit={onSave} className="max-h-[90vh] w-full max-w-xl overflow-y-auto rounded-t-2xl bg-white p-5 shadow-2xl sm:rounded-2xl"><div className="flex items-center justify-between"><h2 className="text-lg font-bold">{project.id?'Edit project':'Create project'}</h2><button type="button" onClick={onClose} className="rounded-lg p-2 text-slate-400 hover:bg-slate-100">x</button></div><div className="mt-5 grid gap-4 sm:grid-cols-2"><Field name="name" label="Project name" required defaultValue={project.name}/><label><span className="mb-1 block text-xs font-medium text-slate-600">Status</span><select name="status" defaultValue={project.status||'active'} className="h-10 w-full rounded-lg border border-slate-200 px-3 text-sm"><option value="active">Active</option><option value="completed">Completed</option><option value="archived">Archived</option></select></label><Field name="startDate" label="Start date" type="date" defaultValue={dateInput(project.startDate)}/><Field name="dueDate" label="Due date" type="date" defaultValue={dateInput(project.dueDate)}/><Field name="budget" label="Budget" type="number" min="0" defaultValue={project.budget}/><label className="sm:col-span-2"><span className="mb-1 block text-xs font-medium text-slate-600">Description</span><textarea name="description" rows={4} defaultValue={project.description} className="w-full rounded-lg border border-slate-200 p-3 text-sm outline-none focus:border-blue-400"/></label></div><div className="mt-6 flex justify-end gap-2"><button type="button" onClick={onClose} className="rounded-lg border border-slate-200 px-4 py-2 text-xs font-semibold">Cancel</button><button disabled={saving} className="rounded-lg bg-blue-600 px-4 py-2 text-xs font-bold text-white disabled:bg-blue-300">{saving?'Saving...':'Save project'}</button></div></form></div>}
-function Field({label,...props}:React.InputHTMLAttributes<HTMLInputElement>&{label:string}){return <label><span className="mb-1 block text-xs font-medium text-slate-600">{label}</span><input {...props} className="h-10 w-full rounded-lg border border-slate-200 px-3 text-sm outline-none focus:border-blue-400"/></label>}
-function dateInput(value?:string){return value?value.slice(0,10):''}
+function ProjectDialog({
+  project,
+  saving,
+  onClose,
+  onSave,
+}: {
+  project: Partial<Project>;
+  saving: boolean;
+  onClose: () => void;
+  onSave: (event: FormEvent<HTMLFormElement>) => void;
+}) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-950/40 sm:items-center sm:p-4">
+      <form
+        onSubmit={onSave}
+        className="max-h-[90vh] w-full max-w-xl overflow-y-auto rounded-t-2xl bg-white p-5 shadow-2xl sm:rounded-2xl"
+      >
+        <div className="flex items-center justify-between">
+          <h2 className="text-lg font-bold">
+            {project.id ? "Edit project" : "Create project"}
+          </h2>
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-lg p-2 text-slate-400 hover:bg-slate-100"
+          >
+            x
+          </button>
+        </div>
+        <div className="mt-5 grid gap-4 sm:grid-cols-2">
+          <Field
+            name="name"
+            label="Project name"
+            required
+            defaultValue={project.name}
+          />
+          <label>
+            <span className="mb-1 block text-xs font-medium text-slate-600">
+              Status
+            </span>
+            <select
+              name="status"
+              defaultValue={project.status || "active"}
+              className="h-10 w-full rounded-lg border border-slate-200 px-3 text-sm"
+            >
+              <option value="active">Active</option>
+              <option value="completed">Completed</option>
+              <option value="archived">Archived</option>
+            </select>
+          </label>
+          <Field
+            name="startDate"
+            label="Start date"
+            type="date"
+            defaultValue={dateInput(project.startDate)}
+          />
+          <Field
+            name="dueDate"
+            label="Due date"
+            type="date"
+            defaultValue={dateInput(project.dueDate)}
+          />
+          <Field
+            name="budget"
+            label="Budget"
+            type="number"
+            min="0"
+            defaultValue={project.budget}
+          />
+          <label className="sm:col-span-2">
+            <span className="mb-1 block text-xs font-medium text-slate-600">
+              Description
+            </span>
+            <textarea
+              name="description"
+              rows={4}
+              defaultValue={project.description}
+              className="w-full rounded-lg border border-slate-200 p-3 text-sm outline-none focus:border-blue-400"
+            />
+          </label>
+        </div>
+        <div className="mt-6 flex justify-end gap-2">
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-lg border border-slate-200 px-4 py-2 text-xs font-semibold"
+          >
+            Cancel
+          </button>
+          <button
+            disabled={saving}
+            className="rounded-lg bg-blue-600 px-4 py-2 text-xs font-bold text-white disabled:bg-blue-300"
+          >
+            {saving ? "Saving..." : "Save project"}
+          </button>
+        </div>
+      </form>
+    </div>
+  );
+}
+function Field({
+  label,
+  ...props
+}: React.InputHTMLAttributes<HTMLInputElement> & { label: string }) {
+  return (
+    <label>
+      <span className="mb-1 block text-xs font-medium text-slate-600">
+        {label}
+      </span>
+      <input
+        {...props}
+        className="h-10 w-full rounded-lg border border-slate-200 px-3 text-sm outline-none focus:border-blue-400"
+      />
+    </label>
+  );
+}
+function dateInput(value?: string) {
+  return value ? value.slice(0, 10) : "";
+}

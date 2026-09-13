@@ -1,47 +1,491 @@
-import { useEffect, useState } from 'react'
-import Icon from '../components/Icon'
-import LanguageSwitch from '../components/LanguageSwitch'
-import BusinessModule from './BusinessModule'
-import AssistantWorkspace, { AssistantHub, AssistantPageId } from './AssistantWorkspace'
-import GlobalChatDrawer from '../components/GlobalChatDrawer'
-import NotificationsMenu from '../components/NotificationsMenu'
-import DashboardPage from './DashboardPage'
-import { getMe, Organization, User } from '../services/auth'
-import ProjectsPage from './ProjectsPage'
-import FilesReportsPage from './FilesReportsPage'
-import SettingsPage from './SettingsPage'
+import { useEffect, useState } from "react";
+import Icon from "../components/Icon";
+import LanguageSwitch from "../components/LanguageSwitch";
+import BusinessModule from "./BusinessModule";
+import AssistantWorkspace, {
+  AssistantHub,
+  AssistantPageId,
+} from "./AssistantWorkspace";
+import GlobalChatDrawer from "../components/GlobalChatDrawer";
+import NotificationsMenu from "../components/NotificationsMenu";
+import DashboardPage from "./DashboardPage";
+import { getMe, Organization, User } from "../services/auth";
+import ProjectsPage from "./ProjectsPage";
+import FilesReportsPage from "./FilesReportsPage";
+import SettingsPage from "./SettingsPage";
+import AiTasksPage from "./AiTasksPage";
 
-type Props = { onLogout: () => void }
+type Props = { onLogout: () => void };
 const nav = [
-  ['Workspace','dashboard','Dashboard','dashboard'],['','projects','Projects','check'],['AI WORKSPACE','command','AI Command Center','bot'],['','tasks','AI Tasks','check'],['','hub','AI Assistants Hub','bot'],
-  ['ASSISTANTS','ceo','CEO Assistant','bot'],['','executive','Executive Assistant','users'],['','sales','Sales AI','chart'],['','finance-ai','Finance AI','card'],['','marketing','Marketing AI','chart'],['','legal','Legal AI','check'],['','operations-ai','Operations AI','settings'],['','success-ai','Customer Success AI','users'],
-  ['OPERATIONS','approvals','Approvals','check'],['','automations','Automations','settings'],['BUSINESS','crm','CRM','users'],['','finance','Finance','card'],['','files','Files','check'],['','reports','Reports','chart'],['SYSTEM','settings','Settings','settings'],['','admin','Administration','users']
-]
-const titles: Record<string,string> = Object.fromEntries(nav.map(([,id,label])=>[id,label]))
+  ["Workspace", "dashboard", "Dashboard", "dashboard"],
+  ["", "projects", "Projects", "check"],
+  ["AI WORKSPACE", "command", "AI Command Center", "bot"],
+  ["", "tasks", "AI Tasks", "check"],
+  ["", "hub", "AI Assistants Hub", "bot"],
+  ["ASSISTANTS", "ceo", "CEO Assistant", "bot"],
+  ["", "executive", "Executive Assistant", "users"],
+  ["", "sales", "Sales AI", "chart"],
+  ["", "finance-ai", "Finance AI", "card"],
+  ["", "marketing", "Marketing AI", "chart"],
+  ["", "legal", "Legal AI", "check"],
+  ["", "operations-ai", "Operations AI", "settings"],
+  ["", "success-ai", "Customer Success AI", "users"],
+  ["OPERATIONS", "approvals", "Approvals", "check"],
+  ["", "automations", "Automations", "settings"],
+  ["BUSINESS", "crm", "CRM", "users"],
+  ["", "finance", "Finance", "card"],
+  ["", "files", "Files", "check"],
+  ["", "reports", "Reports", "chart"],
+  ["SYSTEM", "settings", "Settings", "settings"],
+  ["", "admin", "Administration", "users"],
+];
+const titles: Record<string, string> = Object.fromEntries(
+  nav.map(([, id, label]) => [id, label]),
+);
 
 export default function Workspace({ onLogout }: Props) {
-  const [active,setActive] = useState(()=>{const route=window.location.hash.slice(1);return titles[route]?route:'dashboard'}), [open,setOpen] = useState(false), [collapsed,setCollapsed] = useState(false), [search,setSearch]=useState('')
-  const [identity,setIdentity]=useState<(User&{organization:Organization})>()
-  useEffect(()=>{const loadIdentity=()=>getMe().then(setIdentity).catch(()=>undefined);void loadIdentity();window.addEventListener('settings:changed',loadIdentity);return()=>window.removeEventListener('settings:changed',loadIdentity)},[])
-  useEffect(()=>{window.history.replaceState({},'',`${window.location.pathname}${window.location.search}#${active}`)},[active])
-  const fullName=[identity?.firstName,identity?.lastName].filter(Boolean).join(' ')||'Account user'
-  const initials=[identity?.firstName?.[0],identity?.lastName?.[0]].filter(Boolean).join('').toUpperCase()||'AU'
-  const visibleNav=nav.filter(([,id])=>id!=='admin'||['owner','admin'].includes(String(identity?.role).toLowerCase()))
-  return <div className="flex h-screen overflow-hidden bg-slate-100">
-    {open && <button aria-label="Close navigation" className="fixed inset-0 z-30 bg-slate-950/40 md:hidden" onClick={()=>setOpen(false)}/>} 
-    <aside className={`${open?'translate-x-0':'-translate-x-full'} fixed inset-y-0 left-0 z-40 flex w-56 flex-col bg-[#0A0E1A] text-white transition-all md:relative md:translate-x-0 ${collapsed?'md:w-16':'md:w-56'}`}>
-      <div className="flex h-16 items-center gap-3 border-b border-white/[.08] px-4"><span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-[#c9a84c]/50 bg-[#c9a84c]/[.08] font-serif text-xl font-bold text-[#c9a84c]">A</span>{!collapsed&&<span><b className="block font-serif text-[13px] tracking-[.18em]">AKEEM</b><small className="mt-0.5 block text-[8.5px] tracking-[.06em] text-[#c9a84c]">ENTERPRISE INTELLIGENCE</small></span>}</div>
-      <nav className="flex-1 overflow-y-auto py-3">{visibleNav.map(([group,id,label,icon])=><div key={id}>{group&& !collapsed&&<p className="px-5 pb-1 pt-3 text-[9px] font-bold tracking-[.15em] text-slate-500">{group.toUpperCase()}</p>}<button title={label} onClick={()=>{setActive(id);setOpen(false)}} className={`mx-2 flex w-[calc(100%-16px)] items-center gap-3 rounded-l-lg border-r-2 px-3 py-2 text-left text-xs transition ${active===id?'border-[#c9a84c] bg-[#c9a84c]/10 font-semibold text-white':'border-transparent text-slate-400 hover:bg-white/[.06] hover:text-white'}`}><Icon name={icon} className={`h-4 w-4 shrink-0 ${active===id?'text-[#c9a84c]':'text-slate-500'}`}/>{!collapsed&&label}</button></div>)}</nav>
-      {!collapsed&&<div className="m-3 flex items-center gap-2 rounded-lg bg-white/[.04] p-2"><span className="flex h-8 w-8 items-center justify-center rounded-full border border-[#c9a84c]/30 bg-[#c9a84c]/20 text-xs font-bold text-[#c9a84c]">{initials}</span><span className="min-w-0"><b className="block truncate text-xs">{fullName}</b><small className="block truncate text-[10px] capitalize text-slate-400">{identity?.role||'Member'} · {identity?.organization?.name||'Organization'}</small></span></div>}
-      <button className="hidden border-t border-white/10 py-3 text-slate-400 hover:text-white md:block" onClick={()=>setCollapsed(!collapsed)} aria-label="Collapse sidebar"><Icon name="arrow" className={`mx-auto h-4 w-4 transition ${collapsed?'rotate-180':''}`}/></button>
-    </aside>
-    <div className="flex min-w-0 flex-1 flex-col"><header className="flex h-14 shrink-0 items-center justify-between border-b border-slate-100 bg-white px-3 sm:px-6"><div className="flex items-center gap-2"><button onClick={()=>setOpen(true)} className="rounded-lg p-2 hover:bg-slate-100 md:hidden" aria-label="Open navigation"><Icon name="menu"/></button><span className="hidden font-serif text-xs font-bold tracking-[.16em] text-slate-400 sm:inline">AKEEM</span><span className="hidden text-slate-300 sm:inline">›</span><b className="text-sm text-slate-800">{titles[active]}</b></div><div className="flex items-center gap-2 sm:gap-3"><label className="relative hidden sm:block"><Icon name="search" className="absolute left-3 top-2.5 h-3.5 w-3.5 text-slate-400"/><input aria-label="Search modules" value={search} onChange={event=>setSearch(event.target.value)} onKeyDown={event=>{if(event.key==='Enter'){const match=visibleNav.find(([,id,label])=>`${id} ${label}`.toLowerCase().includes(search.toLowerCase()));if(match){setActive(match[1]);setSearch('')}}}} placeholder="Go to a module..." className="w-44 rounded-lg border border-slate-200 bg-slate-50 py-2 pl-8 pr-3 text-xs focus:bg-white lg:w-56"/>{search&&<span className="absolute right-0 top-10 z-50 w-56 overflow-hidden rounded-xl border border-slate-200 bg-white p-1 shadow-xl">{visibleNav.filter(([,id,label])=>`${id} ${label}`.toLowerCase().includes(search.toLowerCase())).slice(0,6).map(([,id,label,icon])=><button type="button" key={id} onClick={()=>{setActive(id);setSearch('')}} className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-xs text-slate-600 hover:bg-blue-50 hover:text-blue-700"><Icon name={icon} className="h-3.5 w-3.5"/>{label}</button>)}</span>}</label><LanguageSwitch/><NotificationsMenu/><span className="h-6 w-px bg-slate-200"/><button onClick={onLogout} className="flex items-center gap-2 rounded-lg p-1.5 hover:bg-slate-100" title="Sign out"><span className="flex h-7 w-7 items-center justify-center rounded-full border border-[#c9a84c] bg-[#0A0E1A] text-[10px] font-bold text-[#c9a84c]">{initials}</span><span className="hidden max-w-24 truncate text-xs font-semibold text-slate-700 lg:inline">{identity?.firstName||'Account'}</span><Icon name="logout" className="hidden h-3.5 w-3.5 text-slate-400 sm:block"/></button></div></header>
-      <main className="flex-1 overflow-y-auto p-4 sm:p-6">{active==='dashboard'?<DashboardPage onNavigate={setActive} userName={identity?.firstName||''}/>:active==='projects'?<ProjectsPage/>:active==='files'||active==='reports'?<FilesReportsPage mode={active}/>:active==='settings'?<SettingsPage role={identity?.role}/>:active==='hub'?<AssistantHub onNavigate={setActive}/>:['command','ceo','executive','sales','finance-ai','marketing','legal','operations-ai','success-ai'].includes(active)?<AssistantWorkspace key={active} pageId={active as AssistantPageId} onNavigate={setActive}/>:['tasks','approvals','automations','crm','finance','admin'].includes(active)?<BusinessModule id={active} title={titles[active]}/>:<ModulePage id={active}/>}</main>
+  const [active, setActive] = useState(() => {
+      const route = window.location.hash.slice(1);
+      return titles[route] ? route : "dashboard";
+    }),
+    [open, setOpen] = useState(false),
+    [collapsed, setCollapsed] = useState(false),
+    [search, setSearch] = useState("");
+  const [identity, setIdentity] = useState<
+    User & { organization: Organization }
+  >();
+  useEffect(() => {
+    const loadIdentity = () =>
+      getMe()
+        .then(setIdentity)
+        .catch(() => undefined);
+    void loadIdentity();
+    window.addEventListener("settings:changed", loadIdentity);
+    return () => window.removeEventListener("settings:changed", loadIdentity);
+  }, []);
+  useEffect(() => {
+    if (window.location.hash !== `#${active}`)
+      window.history.pushState(
+        {},
+        "",
+        `${window.location.pathname}${window.location.search}#${active}`,
+      );
+  }, [active]);
+  useEffect(() => {
+    const followBrowserNavigation = () => {
+      const route = window.location.hash.slice(1);
+      if (titles[route]) setActive(route);
+    };
+    window.addEventListener("popstate", followBrowserNavigation);
+    window.addEventListener("hashchange", followBrowserNavigation);
+    return () => {
+      window.removeEventListener("popstate", followBrowserNavigation);
+      window.removeEventListener("hashchange", followBrowserNavigation);
+    };
+  }, []);
+  const fullName =
+    [identity?.firstName, identity?.lastName].filter(Boolean).join(" ") ||
+    "Account user";
+  const initials =
+    [identity?.firstName?.[0], identity?.lastName?.[0]]
+      .filter(Boolean)
+      .join("")
+      .toUpperCase() || "AU";
+  const visibleNav = nav.filter(
+    ([, id]) =>
+      id !== "admin" ||
+      ["owner", "admin"].includes(String(identity?.role).toLowerCase()),
+  );
+  return (
+    <div className="flex h-screen overflow-hidden bg-slate-100">
+      {open && (
+        <button
+          aria-label="Close navigation"
+          className="fixed inset-0 z-30 bg-slate-950/40 md:hidden"
+          onClick={() => setOpen(false)}
+        />
+      )}
+      <aside
+        className={`${open ? "translate-x-0" : "-translate-x-full"} fixed inset-y-0 left-0 z-40 flex w-56 flex-col bg-[#0A0E1A] text-white transition-all md:relative md:translate-x-0 ${collapsed ? "md:w-16" : "md:w-56"}`}
+      >
+        <div className="flex h-16 items-center gap-3 border-b border-white/[.08] px-4">
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-[#c9a84c]/50 bg-[#c9a84c]/[.08] font-serif text-xl font-bold text-[#c9a84c]">
+            A
+          </span>
+          {!collapsed && (
+            <span>
+              <b className="block font-serif text-[13px] tracking-[.18em]">
+                AKEEM
+              </b>
+              <small className="mt-0.5 block text-[8.5px] tracking-[.06em] text-[#c9a84c]">
+                ENTERPRISE INTELLIGENCE
+              </small>
+            </span>
+          )}
+        </div>
+        <nav className="flex-1 overflow-y-auto py-3">
+          {visibleNav.map(([group, id, label, icon]) => (
+            <div key={id}>
+              {group && !collapsed && (
+                <p className="px-5 pb-1 pt-3 text-[9px] font-bold tracking-[.15em] text-slate-500">
+                  {group.toUpperCase()}
+                </p>
+              )}
+              <button
+                title={label}
+                onClick={() => {
+                  setActive(id);
+                  setOpen(false);
+                }}
+                className={`mx-2 flex w-[calc(100%-16px)] items-center gap-3 rounded-l-lg border-r-2 px-3 py-2 text-left text-xs transition ${active === id ? "border-[#c9a84c] bg-[#c9a84c]/10 font-semibold text-white" : "border-transparent text-slate-400 hover:bg-white/[.06] hover:text-white"}`}
+              >
+                <Icon
+                  name={icon}
+                  className={`h-4 w-4 shrink-0 ${active === id ? "text-[#c9a84c]" : "text-slate-500"}`}
+                />
+                {!collapsed && label}
+              </button>
+            </div>
+          ))}
+        </nav>
+        {!collapsed && (
+          <div className="m-3 flex items-center gap-2 rounded-lg bg-white/[.04] p-2">
+            <span className="flex h-8 w-8 items-center justify-center rounded-full border border-[#c9a84c]/30 bg-[#c9a84c]/20 text-xs font-bold text-[#c9a84c]">
+              {initials}
+            </span>
+            <span className="min-w-0">
+              <b className="block truncate text-xs">{fullName}</b>
+              <small className="block truncate text-[10px] capitalize text-slate-400">
+                {identity?.role || "Member"} ·{" "}
+                {identity?.organization?.name || "Organization"}
+              </small>
+            </span>
+          </div>
+        )}
+        <button
+          className="hidden border-t border-white/10 py-3 text-slate-400 hover:text-white md:block"
+          onClick={() => setCollapsed(!collapsed)}
+          aria-label="Collapse sidebar"
+        >
+          <Icon
+            name="arrow"
+            className={`mx-auto h-4 w-4 transition ${collapsed ? "rotate-180" : ""}`}
+          />
+        </button>
+      </aside>
+      <div className="flex min-w-0 flex-1 flex-col">
+        <header className="flex h-14 shrink-0 items-center justify-between border-b border-slate-100 bg-white px-3 sm:px-6">
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setOpen(true)}
+              className="rounded-lg p-2 hover:bg-slate-100 md:hidden"
+              aria-label="Open navigation"
+            >
+              <Icon name="menu" />
+            </button>
+            <span className="hidden font-serif text-xs font-bold tracking-[.16em] text-slate-400 sm:inline">
+              AKEEM
+            </span>
+            <span className="hidden text-slate-300 sm:inline">›</span>
+            <b className="text-sm text-slate-800">{titles[active]}</b>
+          </div>
+          <div className="flex items-center gap-2 sm:gap-3">
+            <label className="relative hidden sm:block">
+              <Icon
+                name="search"
+                className="absolute left-3 top-2.5 h-3.5 w-3.5 text-slate-400"
+              />
+              <input
+                aria-label="Search modules"
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") {
+                    const match = visibleNav.find(([, id, label]) =>
+                      `${id} ${label}`
+                        .toLowerCase()
+                        .includes(search.toLowerCase()),
+                    );
+                    if (match) {
+                      setActive(match[1]);
+                      setSearch("");
+                    }
+                  }
+                }}
+                placeholder="Go to a module..."
+                className="w-44 rounded-lg border border-slate-200 bg-slate-50 py-2 pl-8 pr-3 text-xs focus:bg-white lg:w-56"
+              />
+              {search && (
+                <span className="absolute right-0 top-10 z-50 w-56 overflow-hidden rounded-xl border border-slate-200 bg-white p-1 shadow-xl">
+                  {visibleNav
+                    .filter(([, id, label]) =>
+                      `${id} ${label}`
+                        .toLowerCase()
+                        .includes(search.toLowerCase()),
+                    )
+                    .slice(0, 6)
+                    .map(([, id, label, icon]) => (
+                      <button
+                        type="button"
+                        key={id}
+                        onClick={() => {
+                          setActive(id);
+                          setSearch("");
+                        }}
+                        className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-xs text-slate-600 hover:bg-blue-50 hover:text-blue-700"
+                      >
+                        <Icon name={icon} className="h-3.5 w-3.5" />
+                        {label}
+                      </button>
+                    ))}
+                </span>
+              )}
+            </label>
+            <LanguageSwitch />
+            <NotificationsMenu />
+            <span className="h-6 w-px bg-slate-200" />
+            <button
+              onClick={onLogout}
+              className="flex items-center gap-2 rounded-lg p-1.5 hover:bg-slate-100"
+              title="Sign out"
+            >
+              <span className="flex h-7 w-7 items-center justify-center rounded-full border border-[#c9a84c] bg-[#0A0E1A] text-[10px] font-bold text-[#c9a84c]">
+                {initials}
+              </span>
+              <span className="hidden max-w-24 truncate text-xs font-semibold text-slate-700 lg:inline">
+                {identity?.firstName || "Account"}
+              </span>
+              <Icon
+                name="logout"
+                className="hidden h-3.5 w-3.5 text-slate-400 sm:block"
+              />
+            </button>
+          </div>
+        </header>
+        <main className="flex-1 overflow-y-auto p-4 sm:p-6">
+          {active === "dashboard" ? (
+            <DashboardPage
+              onNavigate={setActive}
+              userName={identity?.firstName || ""}
+            />
+          ) : active === "projects" ? (
+            <ProjectsPage />
+          ) : active === "tasks" ? (
+            <AiTasksPage onNavigate={setActive} />
+          ) : active === "files" || active === "reports" ? (
+            <FilesReportsPage mode={active} />
+          ) : active === "settings" ? (
+            <SettingsPage role={identity?.role} />
+          ) : active === "hub" ? (
+            <AssistantHub onNavigate={setActive} />
+          ) : [
+              "command",
+              "ceo",
+              "executive",
+              "sales",
+              "finance-ai",
+              "marketing",
+              "legal",
+              "operations-ai",
+              "success-ai",
+            ].includes(active) ? (
+            <AssistantWorkspace
+              key={active}
+              pageId={active as AssistantPageId}
+              onNavigate={setActive}
+            />
+          ) : ["approvals", "automations", "crm", "finance", "admin"].includes(
+              active,
+            ) ? (
+            <BusinessModule key={active} id={active} title={titles[active]} role={identity?.role} />
+          ) : (
+            <ModulePage id={active} />
+          )}
+        </main>
+      </div>
+      <GlobalChatDrawer activeModule={active} onNavigate={setActive} />
     </div>
-    <GlobalChatDrawer activeModule={active} onNavigate={setActive}/>
-  </div>
+  );
 }
 
-function Dashboard({onNavigate}:{onNavigate:(id:string)=>void}) { const metrics=[['Revenue','$284,500','+12.5%','chart'],['Active Deals','48','+8 this week','users'],['Pending Tasks','17','5 high priority','check'],['AI Hours Saved','126h','+22% this month','bot']]; return <div className="mx-auto max-w-7xl"><div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-end"><div><h1 className="text-2xl font-bold text-slate-900">Good morning, James</h1><p className="mt-1 text-sm text-slate-500">Here’s what’s happening across your business today.</p></div><button onClick={()=>onNavigate('command')} className="flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2.5 text-xs font-bold text-white shadow-sm hover:bg-blue-700"><Icon name="bot" className="h-4 w-4"/>Ask AI Assistant</button></div><section className="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">{metrics.map(([label,value,change,icon])=><article key={label} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm"><div className="flex items-start justify-between"><div><p className="text-xs font-medium text-slate-500">{label}</p><p className="mt-2 text-2xl font-bold text-slate-900">{value}</p></div><span className="rounded-lg bg-blue-50 p-2 text-blue-600"><Icon name={icon} className="h-5 w-5"/></span></div><p className="mt-3 text-xs font-medium text-emerald-600">{change}</p></article>)}</section><section className="mt-5 grid gap-5 xl:grid-cols-[1.5fr_1fr]"><article className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm"><div className="flex items-center justify-between"><h2 className="font-bold">Business overview</h2><select className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs"><option>Last 6 months</option></select></div><div className="mt-8 flex h-52 items-end gap-3 border-b border-l border-slate-200 px-3">{[42,58,50,74,66,88,72,93,82,100,91,108].map((h,i)=><div key={i} className="group flex-1 rounded-t bg-blue-500/80 transition hover:bg-blue-600" style={{height:`${h}px`}} title={`Month ${i+1}`}/>)}</div><div className="mt-3 flex justify-between text-[10px] text-slate-400"><span>Mar</span><span>Apr</span><span>May</span><span>Jun</span><span>Jul</span><span>Aug</span></div></article><article className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm"><h2 className="font-bold">AI activity</h2><div className="mt-4 space-y-4">{[['Sales AI','Qualified 12 new leads','5m ago'],['Finance AI','Completed cash flow forecast','18m ago'],['Legal AI','Reviewed vendor agreement','1h ago'],['Executive Assistant','Prepared board brief','2h ago']].map(([name,text,time])=><div key={name} className="flex gap-3"><span className="mt-0.5 rounded-lg bg-violet-50 p-2 text-violet-600"><Icon name="bot" className="h-4 w-4"/></span><div><b className="block text-xs">{name}</b><p className="text-xs text-slate-500">{text}</p><small className="text-[10px] text-slate-400">{time}</small></div></div>)}</div></article></section></div> }
+function Dashboard({ onNavigate }: { onNavigate: (id: string) => void }) {
+  const metrics = [
+    ["Revenue", "$284,500", "+12.5%", "chart"],
+    ["Active Deals", "48", "+8 this week", "users"],
+    ["Pending Tasks", "17", "5 high priority", "check"],
+    ["AI Hours Saved", "126h", "+22% this month", "bot"],
+  ];
+  return (
+    <div className="mx-auto max-w-7xl">
+      <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-end">
+        <div>
+          <h1 className="text-2xl font-bold text-slate-900">
+            Good morning, James
+          </h1>
+          <p className="mt-1 text-sm text-slate-500">
+            Here’s what’s happening across your business today.
+          </p>
+        </div>
+        <button
+          onClick={() => onNavigate("command")}
+          className="flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2.5 text-xs font-bold text-white shadow-sm hover:bg-blue-700"
+        >
+          <Icon name="bot" className="h-4 w-4" />
+          Ask AI Assistant
+        </button>
+      </div>
+      <section className="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        {metrics.map(([label, value, change, icon]) => (
+          <article
+            key={label}
+            className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm"
+          >
+            <div className="flex items-start justify-between">
+              <div>
+                <p className="text-xs font-medium text-slate-500">{label}</p>
+                <p className="mt-2 text-2xl font-bold text-slate-900">
+                  {value}
+                </p>
+              </div>
+              <span className="rounded-lg bg-blue-50 p-2 text-blue-600">
+                <Icon name={icon} className="h-5 w-5" />
+              </span>
+            </div>
+            <p className="mt-3 text-xs font-medium text-emerald-600">
+              {change}
+            </p>
+          </article>
+        ))}
+      </section>
+      <section className="mt-5 grid gap-5 xl:grid-cols-[1.5fr_1fr]">
+        <article className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+          <div className="flex items-center justify-between">
+            <h2 className="font-bold">Business overview</h2>
+            <select className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs">
+              <option>Last 6 months</option>
+            </select>
+          </div>
+          <div className="mt-8 flex h-52 items-end gap-3 border-b border-l border-slate-200 px-3">
+            {[42, 58, 50, 74, 66, 88, 72, 93, 82, 100, 91, 108].map((h, i) => (
+              <div
+                key={i}
+                className="group flex-1 rounded-t bg-blue-500/80 transition hover:bg-blue-600"
+                style={{ height: `${h}px` }}
+                title={`Month ${i + 1}`}
+              />
+            ))}
+          </div>
+          <div className="mt-3 flex justify-between text-[10px] text-slate-400">
+            <span>Mar</span>
+            <span>Apr</span>
+            <span>May</span>
+            <span>Jun</span>
+            <span>Jul</span>
+            <span>Aug</span>
+          </div>
+        </article>
+        <article className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+          <h2 className="font-bold">AI activity</h2>
+          <div className="mt-4 space-y-4">
+            {[
+              ["Sales AI", "Qualified 12 new leads", "5m ago"],
+              ["Finance AI", "Completed cash flow forecast", "18m ago"],
+              ["Legal AI", "Reviewed vendor agreement", "1h ago"],
+              ["Executive Assistant", "Prepared board brief", "2h ago"],
+            ].map(([name, text, time]) => (
+              <div key={name} className="flex gap-3">
+                <span className="mt-0.5 rounded-lg bg-violet-50 p-2 text-violet-600">
+                  <Icon name="bot" className="h-4 w-4" />
+                </span>
+                <div>
+                  <b className="block text-xs">{name}</b>
+                  <p className="text-xs text-slate-500">{text}</p>
+                  <small className="text-[10px] text-slate-400">{time}</small>
+                </div>
+              </div>
+            ))}
+          </div>
+        </article>
+      </section>
+    </div>
+  );
+}
 
-function ModulePage({id}:{id:string}) { const title=titles[id]; const assistants=['sales','finance-ai','marketing','legal','operations-ai','success-ai','ceo','executive','command'].includes(id); return <div className="mx-auto max-w-7xl"><div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center"><div><h1 className="text-2xl font-bold">{title}</h1><p className="mt-1 text-sm text-slate-500">{assistants?'Your intelligent workspace for faster, better business decisions.':'Manage and monitor your business operations in one place.'}</p></div><button className="flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2.5 text-xs font-bold text-white hover:bg-blue-700"><Icon name="plus" className="h-4 w-4"/>{assistants?'Start new conversation':'Create new'}</button></div><div className="mt-6 grid gap-5 lg:grid-cols-3"><section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm lg:col-span-2"><h2 className="font-bold">{assistants?'Recent conversations':'Overview'}</h2><div className="mt-4 space-y-3">{['Quarterly planning and priorities','Review latest performance report','Prepare team status update'].map((x,i)=><button key={x} className="flex w-full items-center justify-between rounded-lg border border-slate-100 p-4 text-left hover:border-blue-200 hover:bg-blue-50/30"><span><b className="block text-sm">{x}</b><small className="text-slate-400">Updated {i+1} hour{i?'s':''} ago</small></span><span className="text-slate-300">›</span></button>)}</div></section><aside className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm"><h2 className="font-bold">Quick actions</h2><div className="mt-4 space-y-2">{['Generate a report','Analyze performance','Create a summary','View recommendations'].map(x=><button key={x} className="flex w-full items-center gap-3 rounded-lg bg-slate-50 p-3 text-left text-sm font-medium hover:bg-blue-50 hover:text-blue-700"><Icon name="bot" className="h-4 w-4 text-blue-600"/>{x}</button>)}</div></aside></div></div> }
+function ModulePage({ id }: { id: string }) {
+  const title = titles[id];
+  const assistants = [
+    "sales",
+    "finance-ai",
+    "marketing",
+    "legal",
+    "operations-ai",
+    "success-ai",
+    "ceo",
+    "executive",
+    "command",
+  ].includes(id);
+  return (
+    <div className="mx-auto max-w-7xl">
+      <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
+        <div>
+          <h1 className="text-2xl font-bold">{title}</h1>
+          <p className="mt-1 text-sm text-slate-500">
+            {assistants
+              ? "Your intelligent workspace for faster, better business decisions."
+              : "Manage and monitor your business operations in one place."}
+          </p>
+        </div>
+        <button className="flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2.5 text-xs font-bold text-white hover:bg-blue-700">
+          <Icon name="plus" className="h-4 w-4" />
+          {assistants ? "Start new conversation" : "Create new"}
+        </button>
+      </div>
+      <div className="mt-6 grid gap-5 lg:grid-cols-3">
+        <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm lg:col-span-2">
+          <h2 className="font-bold">
+            {assistants ? "Recent conversations" : "Overview"}
+          </h2>
+          <div className="mt-4 space-y-3">
+            {[
+              "Quarterly planning and priorities",
+              "Review latest performance report",
+              "Prepare team status update",
+            ].map((x, i) => (
+              <button
+                key={x}
+                className="flex w-full items-center justify-between rounded-lg border border-slate-100 p-4 text-left hover:border-blue-200 hover:bg-blue-50/30"
+              >
+                <span>
+                  <b className="block text-sm">{x}</b>
+                  <small className="text-slate-400">
+                    Updated {i + 1} hour{i ? "s" : ""} ago
+                  </small>
+                </span>
+                <span className="text-slate-300">›</span>
+              </button>
+            ))}
+          </div>
+        </section>
+        <aside className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+          <h2 className="font-bold">Quick actions</h2>
+          <div className="mt-4 space-y-2">
+            {[
+              "Generate a report",
+              "Analyze performance",
+              "Create a summary",
+              "View recommendations",
+            ].map((x) => (
+              <button
+                key={x}
+                className="flex w-full items-center gap-3 rounded-lg bg-slate-50 p-3 text-left text-sm font-medium hover:bg-blue-50 hover:text-blue-700"
+              >
+                <Icon name="bot" className="h-4 w-4 text-blue-600" />
+                {x}
+              </button>
+            ))}
+          </div>
+        </aside>
+      </div>
+    </div>
+  );
+}
